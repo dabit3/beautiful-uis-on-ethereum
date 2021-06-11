@@ -1,8 +1,189 @@
 import Head from 'next/head'
-import Image from 'next/image'
 import styles from '../styles/Home.module.css'
+import React from 'react'
+import { utils } from 'ethers'
 
-export default function Home() {
+import { createClient } from 'urql';
+
+const client = createClient({
+  url: 'https://api.thegraph.com/subgraphs/name/dabit3/foundationtry1'
+})
+
+// const tokensQuery = `
+//   query {
+//     tokens(
+//       orderBy: createdAtTimestamp
+//       orderDirection: desc
+//       first: 10
+//     ) {
+//       id
+//       tokenID
+//       contentURI
+//       metadataURI
+//     }
+//   }
+// `
+
+// const tokensQuery = `
+//   query($first: Int, $orderBy: BigInt, $orderDirection: String) {
+//     tokens(
+//       first: $first, orderBy: $orderBy, orderDirection: $orderDirection
+//     ) {
+//       id
+//       tokenID
+//       contentURI
+//       metadataURI
+//     }
+//   }
+// `
+
+const tokensQuery = `
+  query {
+    tokens(first: 30) {
+      id
+      tokenID
+      contentURI
+      tokenIPFSPath
+    }
+  }
+`
+
+const tokenAuctionQuery = `
+  query {
+    nftmarketAuctions(
+      first: 35
+      
+      ) {
+      id
+      token {
+        id
+        tokenIPFSPath
+        contentURI
+      }
+      reservePrice
+    }
+  }
+`
+
+async function fetchData() {  
+  const data = await client.query(tokensQuery).toPromise();
+
+  const auctions = await client.query(tokenAuctionQuery).toPromise()
+  console.log('auctions: ', auctions)
+
+  const auctionData = await Promise.all(auctions.data.nftmarketAuctions.map(async auction => {
+    let meta;
+    try {
+      meta = await (await fetch(auction.token.contentURI)).json()
+      console.log('auction meta: ', meta)
+    } catch (err) {
+    }
+    if (!meta) return
+    if (meta.image.includes('mp4')) {
+      auction.type = 'video'
+    }
+    else if (meta.image.includes('wav')) {
+      auction.type = 'audio'
+    }
+    else {
+      auction.type = 'image'
+    }
+    auction.contentURI = meta.image.replace('ipfs://', 'https://ipfs.foundation.app/')
+    auction.meta = meta
+    return auction
+  }))
+
+  // const tokenData = await Promise.all(data.data.tokens.map(async token => {
+  //   let meta;
+  //   try {
+  //     meta = await (await fetch(token.contentURI)).json()
+  //   } catch (err) {
+  //   }
+
+  //   if (!meta) return
+
+  //   if (meta.image.includes('mp4')) {
+  //     token.type = 'video'
+  //   }
+  //   else if (meta.image.includes('wav')) {
+  //     token.type = 'audio'
+  //   }
+  //   else {
+  //     token.type = 'image'
+  //   }
+  //   token.contentURI = meta.image.replace('ipfs://', 'https://ipfs.foundation.app/')
+  //   token.meta = meta
+  //   return token
+  // }))
+  return auctionData
+}
+
+export default function Home(props) {
+  console.log('props: ', props)
+  if (props && props.tokens && props.tokens.length) return (
+    <div className="grid grid-cols-4 gap-4 px-10 py-10">
+      {
+        props.tokens.map(token => {
+          return (
+            <div className="shadow-lg bg-transparent rounded-2xl overflow-hidden">
+              <div key={token.contentURI}
+                className="w-100% h-100%"
+              >
+                {
+                  token.type === 'image' && (
+                    <div style={{height: '320px', overflow: 'hidden'}}>
+                      <img style={{ minHeight: '320px' }} src={token.contentURI} />
+                    </div>
+                  )
+                }
+                {
+                  token.type === 'video' && (
+                    <div className="relative">
+                      <div style={{width: '288px', height: '320px', boxSizing: 'border-box'}} />
+                      <div style={{ position: 'absolute', top: 0, left: 0, bottom: 0, right: 0 }}>
+                        <video height="auto" controls autoPlay
+                        style={{
+                          position: 'absolute',
+                          width: '100%',
+                          height: '100%',
+                          display: 'block',
+                          objectFit: 'cover'
+                        }}>
+                          <source src={token.contentURI} />
+                        </video>
+                      </div>
+                    </div>
+                  )
+                }
+                {
+                  token.type === 'audio' && (
+                    <audio controls>
+                      <source src={token.contentURI} type="audio/ogg" />
+                      <source src={token.contentURI} type="audio/mpeg" />
+                    Your browser does not support the audio element.
+                    </audio>
+                  )
+                }
+                <div className="px-2 pt-2 pb-10">
+                  <h3
+                  style={{ height: 100 }}
+                  className="text-2xl p-4 pt-6 font-semibold">{token.meta.name}</h3>
+                </div>
+              </div>
+              <div className="bg-black p-10">
+                <p className="text-white">
+                  Price
+                </p>
+                <p className="text-white font-bold text-xl">
+                  {utils.formatEther(token.reservePrice)}
+                </p>
+              </div>
+            </div>
+          )
+        })
+      }
+    </div>
+  )
   return (
     <div className={styles.container}>
       <Head>
@@ -15,55 +196,16 @@ export default function Home() {
         <h1 className={styles.title}>
           Welcome to <a href="https://nextjs.org">Next.js!</a>
         </h1>
-
-        <p className={styles.description}>
-          Get started by editing{' '}
-          <code className={styles.code}>pages/index.js</code>
-        </p>
-
-        <div className={styles.grid}>
-          <a href="https://nextjs.org/docs" className={styles.card}>
-            <h2>Documentation &rarr;</h2>
-            <p>Find in-depth information about Next.js features and API.</p>
-          </a>
-
-          <a href="https://nextjs.org/learn" className={styles.card}>
-            <h2>Learn &rarr;</h2>
-            <p>Learn about Next.js in an interactive course with quizzes!</p>
-          </a>
-
-          <a
-            href="https://github.com/vercel/next.js/tree/master/examples"
-            className={styles.card}
-          >
-            <h2>Examples &rarr;</h2>
-            <p>Discover and deploy boilerplate example Next.js projects.</p>
-          </a>
-
-          <a
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=default-template&utm_campaign=create-next-app"
-            className={styles.card}
-          >
-            <h2>Deploy &rarr;</h2>
-            <p>
-              Instantly deploy your Next.js site to a public URL with Vercel.
-            </p>
-          </a>
-        </div>
       </main>
-
-      <footer className={styles.footer}>
-        <a
-          href="https://vercel.com?utm_source=create-next-app&utm_medium=default-template&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Powered by{' '}
-          <span className={styles.logo}>
-            <Image src="/vercel.svg" alt="Vercel Logo" width={72} height={16} />
-          </span>
-        </a>
-      </footer>
     </div>
   )
+}
+
+export async function getServerSideProps() {
+  const data = await fetchData()
+  return {
+    props: {
+      tokens: data
+    }
+  }
 }
